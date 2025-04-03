@@ -8,7 +8,11 @@ from pytorch_grad_cam import GradCAM
 from pytorch_grad_cam.utils.model_targets import ClassifierOutputTarget
 from pytorch_grad_cam.utils.image import show_cam_on_image
 
-# Set device (CPU for Hugging Face Spaces)
+import csv
+import datetime
+import os
+
+# Set device
 device = torch.device("cpu")
 
 # Load model
@@ -22,7 +26,7 @@ model.eval()
 target_layer = model.layer4[-1]
 cam = GradCAM(model=model, target_layers=[target_layer])
 
-# Image transform
+# Image preprocessing
 transform = transforms.Compose([
     transforms.Resize((224, 224)),
     transforms.ToTensor(),
@@ -30,6 +34,23 @@ transform = transforms.Compose([
                          [0.229, 0.224, 0.225])
 ])
 
+# Logging setup
+log_path = "prediction_logs.csv"
+
+def log_prediction(filename, prediction, confidence):
+    timestamp = datetime.datetime.now().isoformat()
+    row = [timestamp, filename, prediction, f"{confidence:.4f}"]
+    
+    if not os.path.exists(log_path):
+        with open(log_path, mode='w', newline='') as file:
+            writer = csv.writer(file)
+            writer.writerow(["timestamp", "image_name", "prediction", "confidence"])
+    
+    with open(log_path, mode='a', newline='') as file:
+        writer = csv.writer(file)
+        writer.writerow(row)
+
+# Prediction function
 def predict_retinopathy(image):
     img = image.convert("RGB").resize((224, 224))
     img_tensor = transform(img).unsqueeze(0).to(device)
@@ -48,10 +69,14 @@ def predict_retinopathy(image):
     grayscale_cam = cam(input_tensor=img_tensor, targets=[ClassifierOutputTarget(pred)])[0]
     cam_image = show_cam_on_image(rgb_img_np, grayscale_cam, use_rgb=True)
 
+    # Logging
+    filename = getattr(image, "filename", "uploaded_image")
+    log_prediction(filename, label, confidence)
+
     cam_pil = Image.fromarray(cam_image)
     return cam_pil, f"{label} (Confidence: {confidence:.2f})"
 
-# Gradio UI
+# Gradio interface
 gr.Interface(
     fn=predict_retinopathy,
     inputs=gr.Image(type="pil"),
@@ -60,5 +85,5 @@ gr.Interface(
         gr.Text(label="Prediction")
     ],
     title="Diabetic Retinopathy Detection",
-    description="Upload a retinal image to classify DR and view Grad-CAM heatmap."
+    description="Upload a retinal image to classify DR and view Grad-CAM heatmap. All predictions are logged for analysis."
 ).launch()
