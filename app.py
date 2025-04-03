@@ -41,10 +41,11 @@ def log_prediction(filename, prediction, confidence):
     timestamp = datetime.datetime.now().isoformat()
     row = [timestamp, filename, prediction, f"{confidence:.4f}"]
 
+    print("⏺ Logging prediction:", row)  # 🔍 Add this line
+
     with open(log_path, mode='a', newline='') as file:
         writer = csv.writer(file)
         writer.writerow(row)
-
 
 # Prediction function
 def predict_retinopathy(image):
