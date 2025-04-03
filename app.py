@@ -8,9 +8,11 @@ from pytorch_grad_cam import GradCAM
 from pytorch_grad_cam.utils.model_targets import ClassifierOutputTarget
 from pytorch_grad_cam.utils.image import show_cam_on_image
 
-import io
+import os
 import csv
 import datetime
+import io
+import zipfile
 
 # Set device
 device = torch.device("cpu")
@@ -26,7 +28,7 @@ model.eval()
 target_layer = model.layer4[-1]
 cam = GradCAM(model=model, target_layers=[target_layer])
 
-# Preprocessing
+# Image preprocessing
 transform = transforms.Compose([
     transforms.Resize((224, 224)),
     transforms.ToTensor(),
@@ -34,18 +36,20 @@ transform = transforms.Compose([
                          [0.229, 0.224, 0.225])
 ])
 
-# In-memory log list
-prediction_log = [["timestamp", "image_name", "prediction", "confidence"]]
+# Folder to store uploaded images
+image_folder = "collected_images"
+os.makedirs(image_folder, exist_ok=True)
 
-# Logging function
-def log_prediction(filename, prediction, confidence):
-    timestamp = datetime.datetime.now().isoformat()
-    row = [timestamp, filename, prediction, f"{confidence:.4f}"]
-    prediction_log.append(row)
-    print("⏺ Logged:", row)
+# CSV log file
+csv_log_path = "prediction_logs.csv"
+if not os.path.exists(csv_log_path):
+    with open(csv_log_path, mode="w", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow(["timestamp", "image_filename", "prediction", "confidence"])
 
 # Prediction function
 def predict_retinopathy(image):
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     img = image.convert("RGB").resize((224, 224))
     img_tensor = transform(img).unsqueeze(0).to(device)
 
@@ -62,31 +66,40 @@ def predict_retinopathy(image):
     rgb_img_np = np.ascontiguousarray(rgb_img_np)
     grayscale_cam = cam(input_tensor=img_tensor, targets=[ClassifierOutputTarget(pred)])[0]
     cam_image = show_cam_on_image(rgb_img_np, grayscale_cam, use_rgb=True)
-
-    # Log it
-    filename = getattr(image, "filename", "uploaded_image")
-    log_prediction(filename, label, confidence)
-
     cam_pil = Image.fromarray(cam_image)
+
+    # Save uploaded image
+    image_filename = f"{timestamp}_{label.replace(' ', '_')}.png"
+    image_path = os.path.join(image_folder, image_filename)
+    image.save(image_path)
+
+    # Log prediction
+    with open(csv_log_path, mode="a", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow([timestamp, image_filename, label, f"{confidence:.4f}"])
+
     return cam_pil, f"{label} (Confidence: {confidence:.2f})"
 
-# CSV download function
-def download_logs():
-    output = io.StringIO()
-    writer = csv.writer(output)
-    writer.writerows(prediction_log)
-    output.seek(0)
+# Download logs
+def download_csv():
+    return csv_log_path
 
-    # Save as a temporary file for download
-    with open("prediction_logs.csv", "w", newline="") as f:
-        f.write(output.getvalue())
+# Zip dataset for download
+def download_dataset_zip():
+    zip_buffer = io.BytesIO()
+    with zipfile.ZipFile(zip_buffer, "w") as zipf:
+        # Add CSV
+        zipf.write(csv_log_path, arcname="prediction_logs.csv")
+        # Add images
+        for fname in os.listdir(image_folder):
+            fpath = os.path.join(image_folder, fname)
+            zipf.write(fpath, arcname=os.path.join("images", fname))
+    zip_buffer.seek(0)
+    return zip_buffer
 
-    return "prediction_logs.csv"
-
-
-# Build the UI with Gradio Blocks
+# Gradio UI
 with gr.Blocks() as demo:
-    gr.Markdown("## 🧠 Diabetic Retinopathy Detection with Grad-CAM & Logging")
+    gr.Markdown("## 🧠 DR Detection with Grad-CAM + Full Dataset Logging")
 
     with gr.Row():
         image_input = gr.Image(type="pil", label="Upload Retinal Image")
@@ -94,10 +107,13 @@ with gr.Blocks() as demo:
 
     prediction_output = gr.Text(label="Prediction")
 
+    run_button = gr.Button("Submit")
+
     with gr.Row():
-        run_button = gr.Button("Submit")
-        download_button = gr.Button("📥 Download Logs")
-        download_file = gr.File(label="Your Log File", interactive=False)
+        download_csv_btn = gr.Button("📄 Download CSV Log")
+        download_zip_btn = gr.Button("📦 Download Full Dataset")
+        csv_file = gr.File()
+        zip_file = gr.File()
 
     run_button.click(
         fn=predict_retinopathy,
@@ -105,10 +121,16 @@ with gr.Blocks() as demo:
         outputs=[cam_output, prediction_output]
     )
 
-    download_button.click(
-        fn=download_logs,
+    download_csv_btn.click(
+        fn=download_csv,
         inputs=[],
-        outputs=download_file
+        outputs=csv_file
+    )
+
+    download_zip_btn.click(
+        fn=download_dataset_zip,
+        inputs=[],
+        outputs=zip_file
     )
 
 demo.launch()
