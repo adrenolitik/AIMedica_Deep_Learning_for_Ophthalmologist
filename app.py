@@ -8,9 +8,9 @@ from pytorch_grad_cam import GradCAM
 from pytorch_grad_cam.utils.model_targets import ClassifierOutputTarget
 from pytorch_grad_cam.utils.image import show_cam_on_image
 
+import io
 import csv
 import datetime
-import os
 
 # Set device
 device = torch.device("cpu")
@@ -26,7 +26,7 @@ model.eval()
 target_layer = model.layer4[-1]
 cam = GradCAM(model=model, target_layers=[target_layer])
 
-# Image preprocessing
+# Preprocessing
 transform = transforms.Compose([
     transforms.Resize((224, 224)),
     transforms.ToTensor(),
@@ -34,18 +34,15 @@ transform = transforms.Compose([
                          [0.229, 0.224, 0.225])
 ])
 
-# Logging setup
-log_path = "prediction_logs.csv"
+# In-memory log list
+prediction_log = [["timestamp", "image_name", "prediction", "confidence"]]
 
+# Logging function
 def log_prediction(filename, prediction, confidence):
     timestamp = datetime.datetime.now().isoformat()
     row = [timestamp, filename, prediction, f"{confidence:.4f}"]
-
-    print("⏺ Logging prediction:", row)  # 🔍 Add this line
-
-    with open(log_path, mode='a', newline='') as file:
-        writer = csv.writer(file)
-        writer.writerow(row)
+    prediction_log.append(row)
+    print("⏺ Logged:", row)
 
 # Prediction function
 def predict_retinopathy(image):
@@ -66,21 +63,46 @@ def predict_retinopathy(image):
     grayscale_cam = cam(input_tensor=img_tensor, targets=[ClassifierOutputTarget(pred)])[0]
     cam_image = show_cam_on_image(rgb_img_np, grayscale_cam, use_rgb=True)
 
-    # Logging
+    # Log it
     filename = getattr(image, "filename", "uploaded_image")
     log_prediction(filename, label, confidence)
 
     cam_pil = Image.fromarray(cam_image)
     return cam_pil, f"{label} (Confidence: {confidence:.2f})"
 
-# Gradio interface
-gr.Interface(
-    fn=predict_retinopathy,
-    inputs=gr.Image(type="pil"),
-    outputs=[
-        gr.Image(type="pil", label="Grad-CAM"),
-        gr.Text(label="Prediction")
-    ],
-    title="Diabetic Retinopathy Detection",
-    description="Upload a retinal image to classify DR and view Grad-CAM heatmap. All predictions are logged for analysis."
-).launch()
+# CSV download function
+def download_logs():
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerows(prediction_log)
+    output.seek(0)
+    return gr.File.update(value=io.BytesIO(output.getvalue().encode()), filename="prediction_logs.csv")
+
+# Build the UI with Gradio Blocks
+with gr.Blocks() as demo:
+    gr.Markdown("## 🧠 Diabetic Retinopathy Detection with Grad-CAM & Logging")
+
+    with gr.Row():
+        image_input = gr.Image(type="pil", label="Upload Retinal Image")
+        cam_output = gr.Image(type="pil", label="Grad-CAM")
+
+    prediction_output = gr.Text(label="Prediction")
+
+    with gr.Row():
+        run_button = gr.Button("Submit")
+        download_button = gr.Button("📥 Download Logs")
+        download_file = gr.File(label="Your Log File", interactive=False)
+
+    run_button.click(
+        fn=predict_retinopathy,
+        inputs=image_input,
+        outputs=[cam_output, prediction_output]
+    )
+
+    download_button.click(
+        fn=download_logs,
+        inputs=[],
+        outputs=download_file
+    )
+
+demo.launch()
