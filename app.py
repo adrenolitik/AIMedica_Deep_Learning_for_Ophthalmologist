@@ -12,12 +12,10 @@ import os
 import csv
 import datetime
 import zipfile
-from gradio.routes import Request
 
-# 🔐 Secret key
+# Admin secret
 ADMIN_KEY = "Diabetes_Detection"
 
-# Device
 device = torch.device("cpu")
 
 # Load model
@@ -27,11 +25,11 @@ model.load_state_dict(torch.load("resnet50_dr_classifier.pth", map_location=devi
 model.to(device)
 model.eval()
 
-# Grad-CAM setup
+# Grad-CAM
 target_layer = model.layer4[-1]
 cam = GradCAM(model=model, target_layers=[target_layer])
 
-# Preprocessing
+# Preprocess
 transform = transforms.Compose([
     transforms.Resize((224, 224)),
     transforms.ToTensor(),
@@ -39,17 +37,17 @@ transform = transforms.Compose([
                          [0.229, 0.224, 0.225])
 ])
 
-# Folders
+# Folders & logs
 image_folder = "collected_images"
 os.makedirs(image_folder, exist_ok=True)
 
 csv_log_path = "prediction_logs.csv"
 if not os.path.exists(csv_log_path):
-    with open(csv_log_path, mode="w", newline="") as f:
+    with open(csv_log_path, "w", newline="") as f:
         writer = csv.writer(f)
         writer.writerow(["timestamp", "image_filename", "prediction", "confidence"])
 
-# 🔍 Prediction
+# Prediction
 def predict_retinopathy(image):
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     img = image.convert("RGB").resize((224, 224))
@@ -81,7 +79,7 @@ def predict_retinopathy(image):
 
     return cam_pil, f"{label} (Confidence: {confidence:.2f})"
 
-# 📁 Admin downloads
+# Downloads
 def download_csv():
     return csv_log_path
 
@@ -94,13 +92,16 @@ def download_dataset_zip():
             zipf.write(fpath, arcname=os.path.join("images", fname))
     return zip_filename
 
-# ✅ Admin check (query param)
-def is_admin(request: Request):
-    return request and request.query_params.get("admin") == ADMIN_KEY
+def check_admin(query_str):
+    if f"admin={ADMIN_KEY}" in query_str:
+        return gr.update(visible=True)
+    return gr.update(visible=False)
 
-# 🌐 App
+# Gradio UI
 with gr.Blocks() as demo:
     gr.Markdown("## 🧠 Diabetic Retinopathy Detection with Grad-CAM")
+
+    url_input = gr.Textbox(visible=False)  # Holds query string
 
     with gr.Row():
         image_input = gr.Image(type="pil", label="Upload Retinal Image")
@@ -115,24 +116,16 @@ with gr.Blocks() as demo:
         outputs=[cam_output, prediction_output]
     )
 
-    # 🔒 Hidden admin section
     with gr.Column(visible=False) as admin_section:
-        gr.Markdown("### 🔐 Private Downloads (Rodiyah Only)")
+        gr.Markdown("### 🔐 Admin Downloads (Private)")
         with gr.Row():
             download_csv_btn = gr.Button("📄 Download CSV Log")
             download_zip_btn = gr.Button("📦 Download Dataset ZIP")
         csv_file = gr.File()
         zip_file = gr.File()
 
-    # ✅ Reveal only if correct ?admin=Diabetes_Detection in URL
-    demo.load(
-        fn=lambda req: gr.update(visible=True) if is_admin(req) else gr.update(visible=False),
-        inputs=[],
-        outputs=admin_section,
-        queue=False,
-        api_name=False,
-        request=True  # ✅ Required to pass HTTP request into lambda
-    )
+    # Logic to reveal admin section
+    url_input.change(fn=check_admin, inputs=url_input, outputs=admin_section)
 
     download_csv_btn.click(fn=download_csv, inputs=[], outputs=csv_file)
     download_zip_btn.click(fn=download_dataset_zip, inputs=[], outputs=zip_file)
