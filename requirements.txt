@@ -3,4 +3,5 @@ torchvision
 pillow
 numpy
 gradio
-pytorch-grad-cam
+git+https://github.com/jacobgil/pytorch-grad-cam.git
+
