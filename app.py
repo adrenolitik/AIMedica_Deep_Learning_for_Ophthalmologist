@@ -40,15 +40,11 @@ log_path = "prediction_logs.csv"
 def log_prediction(filename, prediction, confidence):
     timestamp = datetime.datetime.now().isoformat()
     row = [timestamp, filename, prediction, f"{confidence:.4f}"]
-    
-    if not os.path.exists(log_path):
-        with open(log_path, mode='w', newline='') as file:
-            writer = csv.writer(file)
-            writer.writerow(["timestamp", "image_name", "prediction", "confidence"])
-    
+
     with open(log_path, mode='a', newline='') as file:
         writer = csv.writer(file)
         writer.writerow(row)
+
 
 # Prediction function
 def predict_retinopathy(image):
