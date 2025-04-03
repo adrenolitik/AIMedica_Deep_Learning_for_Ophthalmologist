@@ -96,7 +96,7 @@ def download_dataset_zip():
 
 # ✅ Admin check (query param)
 def is_admin(request: Request):
-    return request.query_params.get("admin") == ADMIN_KEY
+    return request and request.query_params.get("admin") == ADMIN_KEY
 
 # 🌐 App
 with gr.Blocks() as demo:
@@ -126,15 +126,15 @@ with gr.Blocks() as demo:
 
     # ✅ Reveal only if correct ?admin=Diabetes_Detection in URL
     demo.load(
-        lambda req: gr.update(visible=True) if is_admin(req) else gr.update(visible=False),
+        fn=lambda req: gr.update(visible=True) if is_admin(req) else gr.update(visible=False),
         inputs=[],
         outputs=admin_section,
         queue=False,
         api_name=False,
+        request=True  # ✅ Required to pass HTTP request into lambda
     )
 
     download_csv_btn.click(fn=download_csv, inputs=[], outputs=csv_file)
     download_zip_btn.click(fn=download_dataset_zip, inputs=[], outputs=zip_file)
 
 demo.launch()
-
