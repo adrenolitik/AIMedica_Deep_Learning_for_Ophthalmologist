@@ -76,7 +76,13 @@ def download_logs():
     writer = csv.writer(output)
     writer.writerows(prediction_log)
     output.seek(0)
-    return gr.File.update(value=io.BytesIO(output.getvalue().encode()), filename="prediction_logs.csv")
+
+    # Save as a temporary file for download
+    with open("prediction_logs.csv", "w", newline="") as f:
+        f.write(output.getvalue())
+
+    return "prediction_logs.csv"
+
 
 # Build the UI with Gradio Blocks
 with gr.Blocks() as demo:
