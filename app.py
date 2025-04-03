@@ -11,8 +11,10 @@ from pytorch_grad_cam.utils.image import show_cam_on_image
 import os
 import csv
 import datetime
-import io
 import zipfile
+
+# === ADMIN SETUP ===
+ADMIN_KEY = "rodiyah_secret"  # change to your own private key
 
 # Set device
 device = torch.device("cpu")
@@ -36,18 +38,17 @@ transform = transforms.Compose([
                          [0.229, 0.224, 0.225])
 ])
 
-# Folder to store uploaded images
+# Folder setup
 image_folder = "collected_images"
 os.makedirs(image_folder, exist_ok=True)
 
-# CSV log file
 csv_log_path = "prediction_logs.csv"
 if not os.path.exists(csv_log_path):
     with open(csv_log_path, mode="w", newline="") as f:
         writer = csv.writer(f)
         writer.writerow(["timestamp", "image_filename", "prediction", "confidence"])
 
-# Prediction function
+# === MAIN PREDICTION FUNCTION ===
 def predict_retinopathy(image):
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     img = image.convert("RGB").resize((224, 224))
@@ -80,44 +81,56 @@ def predict_retinopathy(image):
 
     return cam_pil, f"{label} (Confidence: {confidence:.2f})"
 
-# Download logs
+# === ADMIN DOWNLOAD FUNCTIONS ===
+def unlock_downloads(key):
+    return gr.update(visible=True) if key == ADMIN_KEY else gr.update(visible=False)
+
 def download_csv():
     return csv_log_path
 
-# Zip dataset for download
 def download_dataset_zip():
     zip_filename = "dataset_bundle.zip"
     with zipfile.ZipFile(zip_filename, "w") as zipf:
-        # Add CSV
         zipf.write(csv_log_path, arcname="prediction_logs.csv")
-        # Add images
         for fname in os.listdir(image_folder):
             fpath = os.path.join(image_folder, fname)
             zipf.write(fpath, arcname=os.path.join("images", fname))
     return zip_filename
 
-# Gradio UI
+# === UI SETUP ===
 with gr.Blocks() as demo:
-    gr.Markdown("## 🧠 DR Detection with Grad-CAM + Full Dataset Logging")
+    gr.Markdown("## 🧠 Diabetic Retinopathy Detection with Grad-CAM & Data Collection")
 
     with gr.Row():
         image_input = gr.Image(type="pil", label="Upload Retinal Image")
         cam_output = gr.Image(type="pil", label="Grad-CAM")
 
     prediction_output = gr.Text(label="Prediction")
-
     run_button = gr.Button("Submit")
-
-    with gr.Row():
-        download_csv_btn = gr.Button("📄 Download CSV Log")
-        download_zip_btn = gr.Button("📦 Download Full Dataset")
-        csv_file = gr.File()
-        zip_file = gr.File()
 
     run_button.click(
         fn=predict_retinopathy,
         inputs=image_input,
         outputs=[cam_output, prediction_output]
+    )
+
+    gr.Markdown("### 🔐 Admin Area (Restricted Access)")
+
+    with gr.Row():
+        admin_input = gr.Text(label="Enter Admin Key", type="password", placeholder="Only Rodiyah knows this 🔐")
+        unlock_btn = gr.Button("Unlock Downloads")
+
+    with gr.Column(visible=False) as download_section:
+        with gr.Row():
+            download_csv_btn = gr.Button("📄 Download CSV Log")
+            download_zip_btn = gr.Button("📦 Download Full Dataset")
+        csv_file = gr.File()
+        zip_file = gr.File()
+
+    unlock_btn.click(
+        fn=unlock_downloads,
+        inputs=admin_input,
+        outputs=download_section
     )
 
     download_csv_btn.click(
