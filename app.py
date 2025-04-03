@@ -86,16 +86,15 @@ def download_csv():
 
 # Zip dataset for download
 def download_dataset_zip():
-    zip_buffer = io.BytesIO()
-    with zipfile.ZipFile(zip_buffer, "w") as zipf:
+    zip_filename = "dataset_bundle.zip"
+    with zipfile.ZipFile(zip_filename, "w") as zipf:
         # Add CSV
         zipf.write(csv_log_path, arcname="prediction_logs.csv")
         # Add images
         for fname in os.listdir(image_folder):
             fpath = os.path.join(image_folder, fname)
             zipf.write(fpath, arcname=os.path.join("images", fname))
-    zip_buffer.seek(0)
-    return zip_buffer
+    return zip_filename
 
 # Gradio UI
 with gr.Blocks() as demo:
