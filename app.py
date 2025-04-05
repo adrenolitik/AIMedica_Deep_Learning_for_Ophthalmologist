@@ -14,6 +14,9 @@ import datetime
 # Setup
 device = torch.device("cpu")
 save_dir = "/home/user/app/saved_predictions"
+if not os.path.exists(save_dir):
+    os.makedirs(save_dir)
+    print("📁 Folder created:", save_dir)
 os.makedirs(save_dir, exist_ok=True)
 
 # Load model
