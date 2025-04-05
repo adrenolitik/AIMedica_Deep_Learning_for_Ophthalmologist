@@ -74,5 +74,5 @@ gr.Interface(
         gr.Text(label="Prediction")
     ],
     title="Diabetic Retinopathy Detection",
-    description="Upload a retinal image to classify DR and view Grad-CAM heatmap. All predictions are auto-saved with label and confidence."
+    description="Upload a retinal image to classify DR and view Grad-CAM heatmap."
 ).launch()
