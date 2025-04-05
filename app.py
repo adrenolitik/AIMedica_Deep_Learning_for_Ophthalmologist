@@ -37,11 +37,17 @@ transform = transforms.Compose([
 # Logging setup
 log_path = "prediction_logs.csv"
 
+# Create the CSV file with headers if it doesn't exist
+if not os.path.exists(log_path):
+    with open(log_path, mode='w', newline='') as file:
+        writer = csv.writer(file)
+        writer.writerow(["timestamp", "image_name", "prediction", "confidence"])
+
 def log_prediction(filename, prediction, confidence):
     timestamp = datetime.datetime.now().isoformat()
     row = [timestamp, filename, prediction, f"{confidence:.4f}"]
 
-    print("⏺ Logging prediction:", row)  # 🔍 Add this line
+    print("⏺ Logging prediction:", row)
 
     with open(log_path, mode='a', newline='') as file:
         writer = csv.writer(file)
@@ -84,7 +90,3 @@ gr.Interface(
     title="Diabetic Retinopathy Detection",
     description="Upload a retinal image to classify DR and view Grad-CAM heatmap. All predictions are logged for analysis."
 ).launch()
-s=[cam_output, prediction_output]
-    )
-
-demo.launch()
