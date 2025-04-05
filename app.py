@@ -8,8 +8,13 @@ from pytorch_grad_cam import GradCAM
 from pytorch_grad_cam.utils.model_targets import ClassifierOutputTarget
 from pytorch_grad_cam.utils.image import show_cam_on_image
 
-# Set device
+import os
+import datetime
+
+# Setup
 device = torch.device("cpu")
+save_dir = "saved_predictions"
+os.makedirs(save_dir, exist_ok=True)
 
 # Load model
 model = models.resnet50(weights=None)
@@ -18,11 +23,11 @@ model.load_state_dict(torch.load("resnet50_dr_classifier.pth", map_location=devi
 model.to(device)
 model.eval()
 
-# Grad-CAM setup
+# Grad-CAM
 target_layer = model.layer4[-1]
 cam = GradCAM(model=model, target_layers=[target_layer])
 
-# Image preprocessing
+# Preprocessing
 transform = transforms.Compose([
     transforms.Resize((224, 224)),
     transforms.ToTensor(),
@@ -30,8 +35,9 @@ transform = transforms.Compose([
                          [0.229, 0.224, 0.225])
 ])
 
-# Prediction function
+# Predict and save
 def predict_retinopathy(image):
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     img = image.convert("RGB").resize((224, 224))
     img_tensor = transform(img).unsqueeze(0).to(device)
 
@@ -41,18 +47,22 @@ def predict_retinopathy(image):
         pred = torch.argmax(probs, dim=1).item()
         confidence = probs[0][pred].item()
 
-    label = "Diabetic Retinopathy (DR)" if pred == 0 else "No DR"
+    label = "DR" if pred == 0 else "NoDR"
 
     # Grad-CAM
     rgb_img_np = np.array(img).astype(np.float32) / 255.0
     rgb_img_np = np.ascontiguousarray(rgb_img_np)
     grayscale_cam = cam(input_tensor=img_tensor, targets=[ClassifierOutputTarget(pred)])[0]
     cam_image = show_cam_on_image(rgb_img_np, grayscale_cam, use_rgb=True)
-
     cam_pil = Image.fromarray(cam_image)
+
+    # Save image with label and confidence
+    filename = f"{timestamp}_{label}_{confidence:.2f}.png"
+    cam_pil.save(os.path.join(save_dir, filename))
+
     return cam_pil, f"{label} (Confidence: {confidence:.2f})"
 
-# Gradio interface
+# Gradio app
 gr.Interface(
     fn=predict_retinopathy,
     inputs=gr.Image(type="pil"),
@@ -61,5 +71,5 @@ gr.Interface(
         gr.Text(label="Prediction")
     ],
     title="Diabetic Retinopathy Detection",
-    description="Upload a retinal image to classify DR and view Grad-CAM heatmap."
+    description="Upload a retinal image to classify DR and view Grad-CAM heatmap. All predictions are auto-saved with label and confidence."
 ).launch()
