@@ -13,7 +13,7 @@ import datetime
 
 # Setup
 device = torch.device("cpu")
-save_dir = "saved_predictions"
+save_dir = "/home/user/app/saved_predictions"
 os.makedirs(save_dir, exist_ok=True)
 
 # Load model
