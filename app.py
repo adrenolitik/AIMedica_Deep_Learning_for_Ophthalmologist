@@ -13,9 +13,10 @@ import csv
 import datetime
 import zipfile
 
-# Admin secret
+# ✅ Admin key (hidden until typed)
 ADMIN_KEY = "Diabetes_Detection"
 
+# Set device
 device = torch.device("cpu")
 
 # Load model
@@ -25,11 +26,11 @@ model.load_state_dict(torch.load("resnet50_dr_classifier.pth", map_location=devi
 model.to(device)
 model.eval()
 
-# Grad-CAM
+# Grad-CAM setup
 target_layer = model.layer4[-1]
 cam = GradCAM(model=model, target_layers=[target_layer])
 
-# Preprocess
+# Image preprocessing
 transform = transforms.Compose([
     transforms.Resize((224, 224)),
     transforms.ToTensor(),
@@ -37,7 +38,7 @@ transform = transforms.Compose([
                          [0.229, 0.224, 0.225])
 ])
 
-# Folders & logs
+# Data storage
 image_folder = "collected_images"
 os.makedirs(image_folder, exist_ok=True)
 
@@ -47,7 +48,7 @@ if not os.path.exists(csv_log_path):
         writer = csv.writer(f)
         writer.writerow(["timestamp", "image_filename", "prediction", "confidence"])
 
-# Prediction
+# Prediction function
 def predict_retinopathy(image):
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     img = image.convert("RGB").resize((224, 224))
@@ -68,7 +69,7 @@ def predict_retinopathy(image):
     cam_image = show_cam_on_image(rgb_img_np, grayscale_cam, use_rgb=True)
     cam_pil = Image.fromarray(cam_image)
 
-    # Save image + log
+    # Save image & log
     image_filename = f"{timestamp}_{label.replace(' ', '_')}.png"
     image_path = os.path.join(image_folder, image_filename)
     image.save(image_path)
@@ -79,7 +80,13 @@ def predict_retinopathy(image):
 
     return cam_pil, f"{label} (Confidence: {confidence:.2f})"
 
-# Downloads
+# Admin unlock
+def unlock_admin(key_input):
+    if key_input == ADMIN_KEY:
+        return gr.update(visible=True)
+    return gr.update(visible=False)
+
+# Download functions
 def download_csv():
     return csv_log_path
 
@@ -92,20 +99,13 @@ def download_dataset_zip():
             zipf.write(fpath, arcname=os.path.join("images", fname))
     return zip_filename
 
-def check_admin(query_str):
-    if f"admin={ADMIN_KEY}" in query_str:
-        return gr.update(visible=True)
-    return gr.update(visible=False)
-
-# Gradio UI
+# UI
 with gr.Blocks() as demo:
     gr.Markdown("## 🧠 Diabetic Retinopathy Detection with Grad-CAM")
 
-    url_input = gr.Textbox(visible=False)  # Holds query string
-
     with gr.Row():
         image_input = gr.Image(type="pil", label="Upload Retinal Image")
-        cam_output = gr.Image(type="pil", label="Grad-CAM")
+        cam_output = gr.Image(type="pil", label="Grad-CAM Output")
 
     prediction_output = gr.Text(label="Prediction")
     run_button = gr.Button("Submit")
@@ -116,16 +116,24 @@ with gr.Blocks() as demo:
         outputs=[cam_output, prediction_output]
     )
 
-    with gr.Column(visible=False) as admin_section:
-        gr.Markdown("### 🔐 Admin Downloads (Private)")
+    gr.Markdown("### 🔐 Admin Access (Rodiyah only)")
+
+    admin_key_input = gr.Text(label="Enter Admin Key", type="password", placeholder="Only Rodiyah knows this!")
+    unlock_button = gr.Button("Unlock Downloads")
+
+    with gr.Column(visible=False) as admin_panel:
+        gr.Markdown("### ✅ Download Panel (Private Access)")
         with gr.Row():
             download_csv_btn = gr.Button("📄 Download CSV Log")
-            download_zip_btn = gr.Button("📦 Download Dataset ZIP")
+            download_zip_btn = gr.Button("📦 Download Full Dataset")
         csv_file = gr.File()
         zip_file = gr.File()
 
-    # Logic to reveal admin section
-    url_input.change(fn=check_admin, inputs=url_input, outputs=admin_section)
+    unlock_button.click(
+        fn=unlock_admin,
+        inputs=admin_key_input,
+        outputs=admin_panel
+    )
 
     download_csv_btn.click(fn=download_csv, inputs=[], outputs=csv_file)
     download_zip_btn.click(fn=download_dataset_zip, inputs=[], outputs=zip_file)
