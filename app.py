@@ -8,28 +8,25 @@ from pytorch_grad_cam import GradCAM
 from pytorch_grad_cam.utils.model_targets import ClassifierOutputTarget
 from pytorch_grad_cam.utils.image import show_cam_on_image
 
-import os
+import csv
 import datetime
-import sqlite3
+import os
 
-# === Setup paths and model ===
+# Set device
 device = torch.device("cpu")
-ADMIN_KEY = "Diabetes_Detection"
-image_folder = "collected_images"
-os.makedirs(image_folder, exist_ok=True)
 
-# === Load model ===
+# Load model
 model = models.resnet50(weights=None)
 model.fc = torch.nn.Linear(model.fc.in_features, 2)
 model.load_state_dict(torch.load("resnet50_dr_classifier.pth", map_location=device))
 model.to(device)
 model.eval()
 
-# === Grad-CAM setup ===
+# Grad-CAM setup
 target_layer = model.layer4[-1]
 cam = GradCAM(model=model, target_layers=[target_layer])
 
-# === Image transform ===
+# Image preprocessing
 transform = transforms.Compose([
     transforms.Resize((224, 224)),
     transforms.ToTensor(),
@@ -37,35 +34,21 @@ transform = transforms.Compose([
                          [0.229, 0.224, 0.225])
 ])
 
-# === SQLite setup ===
-def init_db():
-    conn = sqlite3.connect("logs.db")
-    cursor = conn.cursor()
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS predictions (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            timestamp TEXT,
-            filename TEXT,
-            prediction TEXT,
-            confidence REAL
-        )
-    """)
-    conn.commit()
-    conn.close()
+# Logging setup
+log_path = "prediction_logs.csv"
 
-def log_to_db(timestamp, filename, prediction, confidence):
-    conn = sqlite3.connect("logs.db")
-    cursor = conn.cursor()
-    cursor.execute("INSERT INTO predictions (timestamp, filename, prediction, confidence) VALUES (?, ?, ?, ?)",
-                   (timestamp, filename, prediction, confidence))
-    conn.commit()
-    conn.close()
+def log_prediction(filename, prediction, confidence):
+    timestamp = datetime.datetime.now().isoformat()
+    row = [timestamp, filename, prediction, f"{confidence:.4f}"]
 
-init_db()  # ✅ Initialize table
+    print("⏺ Logging prediction:", row)  # 🔍 Add this line
 
-# === Prediction Function ===
+    with open(log_path, mode='a', newline='') as file:
+        writer = csv.writer(file)
+        writer.writerow(row)
+
+# Prediction function
 def predict_retinopathy(image):
-    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     img = image.convert("RGB").resize((224, 224))
     img_tensor = transform(img).unsqueeze(0).to(device)
 
@@ -82,32 +65,26 @@ def predict_retinopathy(image):
     rgb_img_np = np.ascontiguousarray(rgb_img_np)
     grayscale_cam = cam(input_tensor=img_tensor, targets=[ClassifierOutputTarget(pred)])[0]
     cam_image = show_cam_on_image(rgb_img_np, grayscale_cam, use_rgb=True)
+
+    # Logging
+    filename = getattr(image, "filename", "uploaded_image")
+    log_prediction(filename, label, confidence)
+
     cam_pil = Image.fromarray(cam_image)
-
-    # Save image and log
-    filename = f"{timestamp}_{label.replace(' ', '_')}.png"
-    image_path = os.path.join(image_folder, filename)
-    image.save(image_path)
-
-    log_to_db(timestamp, image_path, label, confidence)
-
     return cam_pil, f"{label} (Confidence: {confidence:.2f})"
 
-# === Gradio Interface ===
-with gr.Blocks() as demo:
-    gr.Markdown("## 🧠 DR Detection with Grad-CAM + SQLite Logging")
-
-    with gr.Row():
-        image_input = gr.Image(type="pil", label="Upload Retinal Image")
-        cam_output = gr.Image(type="pil", label="Grad-CAM")
-
-    prediction_output = gr.Text(label="Prediction")
-    run_button = gr.Button("Submit")
-
-    run_button.click(
-        fn=predict_retinopathy,
-        inputs=image_input,
-        outputs=[cam_output, prediction_output]
+# Gradio interface
+gr.Interface(
+    fn=predict_retinopathy,
+    inputs=gr.Image(type="pil"),
+    outputs=[
+        gr.Image(type="pil", label="Grad-CAM"),
+        gr.Text(label="Prediction")
+    ],
+    title="Diabetic Retinopathy Detection",
+    description="Upload a retinal image to classify DR and view Grad-CAM heatmap. All predictions are logged for analysis."
+).launch()
+s=[cam_output, prediction_output]
     )
 
 demo.launch()
