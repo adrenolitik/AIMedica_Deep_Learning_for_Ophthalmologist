@@ -8,13 +8,9 @@ from pytorch_grad_cam import GradCAM
 from pytorch_grad_cam.utils.model_targets import ClassifierOutputTarget
 from pytorch_grad_cam.utils.image import show_cam_on_image
 
-import os
 import csv
 import datetime
-import zipfile
-
-# ✅ Admin key (hidden until typed)
-ADMIN_KEY = "Diabetes_Detection"
+import os
 
 # Set device
 device = torch.device("cpu")
@@ -38,19 +34,21 @@ transform = transforms.Compose([
                          [0.229, 0.224, 0.225])
 ])
 
-# Data storage
-image_folder = "collected_images"
-os.makedirs(image_folder, exist_ok=True)
+# Logging setup
+log_path = "prediction_logs.csv"
 
-csv_log_path = "prediction_logs.csv"
-if not os.path.exists(csv_log_path):
-    with open(csv_log_path, "w", newline="") as f:
-        writer = csv.writer(f)
-        writer.writerow(["timestamp", "image_filename", "prediction", "confidence"])
+def log_prediction(filename, prediction, confidence):
+    timestamp = datetime.datetime.now().isoformat()
+    row = [timestamp, filename, prediction, f"{confidence:.4f}"]
+
+    print("⏺ Logging prediction:", row)  # 🔍 Add this line
+
+    with open(log_path, mode='a', newline='') as file:
+        writer = csv.writer(file)
+        writer.writerow(row)
 
 # Prediction function
 def predict_retinopathy(image):
-    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     img = image.convert("RGB").resize((224, 224))
     img_tensor = transform(img).unsqueeze(0).to(device)
 
@@ -67,75 +65,22 @@ def predict_retinopathy(image):
     rgb_img_np = np.ascontiguousarray(rgb_img_np)
     grayscale_cam = cam(input_tensor=img_tensor, targets=[ClassifierOutputTarget(pred)])[0]
     cam_image = show_cam_on_image(rgb_img_np, grayscale_cam, use_rgb=True)
+
+    # Logging
+    filename = getattr(image, "filename", "uploaded_image")
+    log_prediction(filename, label, confidence)
+
     cam_pil = Image.fromarray(cam_image)
-
-    # Save image & log
-    image_filename = f"{timestamp}_{label.replace(' ', '_')}.png"
-    image_path = os.path.join(image_folder, image_filename)
-    image.save(image_path)
-
-    with open(csv_log_path, mode="a", newline="") as f:
-        writer = csv.writer(f)
-        writer.writerow([timestamp, image_filename, label, f"{confidence:.4f}"])
-
     return cam_pil, f"{label} (Confidence: {confidence:.2f})"
 
-# Admin unlock
-def unlock_admin(key_input):
-    if key_input == ADMIN_KEY:
-        return gr.update(visible=True)
-    return gr.update(visible=False)
-
-# Download functions
-def download_csv():
-    return csv_log_path
-
-def download_dataset_zip():
-    zip_filename = "dataset_bundle.zip"
-    with zipfile.ZipFile(zip_filename, "w") as zipf:
-        zipf.write(csv_log_path, arcname="prediction_logs.csv")
-        for fname in os.listdir(image_folder):
-            fpath = os.path.join(image_folder, fname)
-            zipf.write(fpath, arcname=os.path.join("images", fname))
-    return zip_filename
-
-# UI
-with gr.Blocks() as demo:
-    gr.Markdown("## 🧠 Diabetic Retinopathy Detection with Grad-CAM")
-
-    with gr.Row():
-        image_input = gr.Image(type="pil", label="Upload Retinal Image")
-        cam_output = gr.Image(type="pil", label="Grad-CAM Output")
-
-    prediction_output = gr.Text(label="Prediction")
-    run_button = gr.Button("Submit")
-
-    run_button.click(
-        fn=predict_retinopathy,
-        inputs=image_input,
-        outputs=[cam_output, prediction_output]
-    )
-
-    gr.Markdown("### 🔐 Admin Access (Rodiyah only)")
-
-    admin_key_input = gr.Text(label="Enter Admin Key", type="password", placeholder="Only Rodiyah knows this!")
-    unlock_button = gr.Button("Unlock Downloads")
-
-    with gr.Column(visible=False) as admin_panel:
-        gr.Markdown("### ✅ Download Panel (Private Access)")
-        with gr.Row():
-            download_csv_btn = gr.Button("📄 Download CSV Log")
-            download_zip_btn = gr.Button("📦 Download Full Dataset")
-        csv_file = gr.File()
-        zip_file = gr.File()
-
-    unlock_button.click(
-        fn=unlock_admin,
-        inputs=admin_key_input,
-        outputs=admin_panel
-    )
-
-    download_csv_btn.click(fn=download_csv, inputs=[], outputs=csv_file)
-    download_zip_btn.click(fn=download_dataset_zip, inputs=[], outputs=zip_file)
-
-demo.launch()
+# Gradio interface
+gr.Interface(
+    fn=predict_retinopathy,
+    inputs=gr.Image(type="pil"),
+    outputs=[
+        gr.Image(type="pil", label="Grad-CAM"),
+        gr.Text(label="Prediction")
+    ],
+    title="Diabetic Retinopathy Detection",
+    description="Upload a retinal image to classify DR and view Grad-CAM heatmap. All predictions are logged for analysis."
+).launch()
