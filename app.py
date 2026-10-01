@@ -205,6 +205,14 @@ with gr.Blocks(
           <a href="https://huggingface.co/spaces/aimedica/AIMedica_Deep_Learning_for_Ophthalmologist" target="_blank">
           Исходный Space на Hugging Face</a>
           <br><br>
+          <b>Метрики и источники:</b> ориентиры ResNet-50 на датасете
+          <a href="https://www.kaggle.com/competitions/aptos2019-blindness-detection" target="_blank">APTOS 2019</a> —
+          Accuracy 93–96 % · AUC-ROC 0,94–0,97 · Sensitivity 90–95 %
+          (<a href="https://pmc.ncbi.nlm.nih.gov/articles/PMC10114328/" target="_blank">Lin et al., 2023</a> ·
+          <a href="https://arxiv.org/html/2507.17121v1" target="_blank">arXiv 2025</a> ·
+          <a href="https://jamanetwork.com/journals/jama/fullarticle/2588763" target="_blank">Gulshan et al., JAMA 2016</a> ·
+          <a href="https://arxiv.org/abs/1610.02391" target="_blank">Grad-CAM, ICCV 2017</a>).
+          <br><br>
           ⚠️ Приложение носит демонстрационный характер и <b>не заменяет консультацию врача-офтальмолога</b>.
           В экстренных ситуациях обращайтесь за неотложной медицинской помощью.
         </div>
